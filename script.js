@@ -365,11 +365,68 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    async function analyzeImageWithAI(imageBase64, userQuestion) {
+        try {
+            console.log("Iniciando análise da imagem...");
+            
+            // Garantir que a imagem está no formato correto
+            if (!imageBase64.startsWith('data:image/')) {
+                imageBase64 = `data:image/jpeg;base64,${imageBase64.split(',').pop()}`;
+            }
+            
+            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": SITE_URL,
+                    "X-Title": SITE_NAME
+                },
+                body: JSON.stringify({
+                    "model": "gpt-4-vision-preview",
+                    "max_tokens": 1000,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "Você é um assistente especializado em analisar imagens e responder em português do Brasil de forma clara e detalhada."
+                        },
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": userQuestion || "O que você vê nesta imagem? Por favor, descreva detalhadamente."
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": imageBase64
+                                }
+                            ]
+                        }
+                    ]
+                })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error("Erro da API:", errorText);
+                throw new Error(`Erro na API: ${response.status} - ${errorText}`);
+            }
+
+            const data = await response.json();
+            console.log("Resposta da API recebida com sucesso");
+            return data.choices[0].message.content;
+        } catch (error) {
+            console.error("Erro detalhado ao analisar imagem:", error);
+            throw new Error(`Erro ao analisar imagem: ${error.message}`);
+        }
+    }
+
     async function captureCurrentFrame() {
         try {
             const canvas = document.createElement('canvas');
-            let width = 800; // Tamanho máximo para reduzir o tamanho do arquivo
-            let height = 600;
+            let width = 512; // Reduzindo o tamanho máximo
+            let height = 384;
             let sourceElement;
 
             if (isCameraActive && cameraPreview.videoWidth > 0) {
@@ -395,8 +452,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // Desenhar a imagem redimensionada
             context.drawImage(sourceElement, 0, 0, width, height);
 
-            // Converter para JPEG com qualidade reduzida
-            const base64Data = canvas.toDataURL('image/jpeg', 0.7);
+            // Converter para JPEG com qualidade mais baixa para reduzir tamanho
+            const base64Data = canvas.toDataURL('image/jpeg', 0.6);
             
             // Verificar o tamanho dos dados
             const estimatedSize = Math.round((base64Data.length * 3) / 4);
@@ -406,57 +463,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error("Erro ao capturar frame:", error);
             return null;
-        }
-    }
-
-    async function analyzeImageWithAI(imageBase64, userQuestion) {
-        try {
-            console.log("Iniciando análise da imagem...");
-            
-            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": SITE_URL,
-                    "X-Title": SITE_NAME,
-                    "OpenAI-Organization": "org-123",
-                    "X-Custom-Auth": "true"
-                },
-                body: JSON.stringify({
-                    "model": "anthropic/claude-3-haiku",
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": userQuestion || "O que você vê nesta imagem? Por favor, descreva detalhadamente."
-                                },
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": imageBase64
-                                    }
-                                }
-                            ]
-                        }
-                    ]
-                })
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error("Erro da API:", errorText);
-                throw new Error(`Erro na API: ${response.status} - ${errorText}`);
-            }
-
-            const data = await response.json();
-            console.log("Resposta da API recebida com sucesso");
-            return data.choices[0].message.content;
-        } catch (error) {
-            console.error("Erro detalhado ao analisar imagem:", error);
-            throw new Error(`Erro ao analisar imagem: ${error.message}`);
         }
     }
 
