@@ -18,8 +18,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let mediaRecorder = null;
     let audioChunks = [];
     let currentSpeech = null;
-    let continuousRecognition = false;
-    let recognitionInterval = null;
+    let lastProcessedText = '';
+    let processingAudio = false;
+    let silenceTimeout = null;
 
     // Configuração da API
     const OPENROUTER_API_KEY = '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';
@@ -142,13 +143,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentStream.getTracks().forEach(track => track.stop());
             }
 
-            const stream = await navigator.mediaDevices.getUserMedia({
+            const constraints = {
                 video: {
-                    facingMode: 'environment'
-                },
-                audio: false
-            });
+                    facingMode: isMobile ? 'environment' : 'user',
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
+            };
 
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
             currentStream = stream;
             isCameraActive = true;
             isCapturing = true;
@@ -156,6 +159,14 @@ document.addEventListener('DOMContentLoaded', () => {
             cameraPreview.srcObject = stream;
             cameraPreview.style.display = 'block';
             screenshot.style.display = 'none';
+
+            // Garantir que o vídeo está carregado
+            await new Promise((resolve) => {
+                cameraPreview.onloadedmetadata = () => {
+                    cameraPreview.play();
+                    resolve();
+                };
+            });
 
             cameraButton.classList.add('active');
 
@@ -195,70 +206,99 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function startContinuousRecording() {
+    async function startVoiceRecognition() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream);
             isRecording = true;
-            continuousRecognition = true;
             micButton.classList.add('recording');
-            micButton.querySelector('.mic-text').textContent = 'Gravando...';
+            micButton.querySelector('.mic-text').textContent = 'Ouvindo...';
 
-            // Configurar intervalo de gravação
-            const startNewRecording = () => {
-                audioChunks = [];
-                mediaRecorder.start();
+            let currentAudioChunks = [];
+            let isCollectingAudio = false;
 
-                setTimeout(() => {
-                    if (isRecording) {
-                        mediaRecorder.stop();
+            // Detector de silêncio
+            const audioContext = new AudioContext();
+            const source = audioContext.createMediaStreamSource(stream);
+            const processor = audioContext.createScriptProcessor(1024, 1, 1);
+            const analyser = audioContext.createAnalyser();
+
+            source.connect(analyser);
+            analyser.connect(processor);
+            processor.connect(audioContext.destination);
+
+            let silenceStart = Date.now();
+            const silenceThreshold = -50; // dB
+            const minAudioLength = 1000; // 1 segundo
+            const maxAudioLength = 10000; // 10 segundos
+
+            processor.onaudioprocess = function(e) {
+                const input = e.inputBuffer.getChannelData(0);
+                let sum = 0;
+                for (let i = 0; i < input.length; i++) {
+                    sum += input[i] * input[i];
+                }
+                const rms = Math.sqrt(sum / input.length);
+                const db = 20 * Math.log10(rms);
+
+                if (db < silenceThreshold) {
+                    if (!isCollectingAudio) {
+                        silenceStart = Date.now();
+                    } else if (Date.now() - silenceStart > 1000) {
+                        // Se houver silêncio por mais de 1 segundo e tivermos áudio coletado
+                        if (currentAudioChunks.length > 0) {
+                            const audioBlob = new Blob(currentAudioChunks, { type: 'audio/wav' });
+                            processAudio(audioBlob);
+                            currentAudioChunks = [];
+                        }
+                        isCollectingAudio = false;
                     }
-                }, 5000); // Gravar por 5 segundos
+                } else {
+                    if (!isCollectingAudio) {
+                        isCollectingAudio = true;
+                        mediaRecorder.start();
+                    }
+                    silenceStart = Date.now();
+                }
             };
 
             mediaRecorder.ondataavailable = (event) => {
-                audioChunks.push(event.data);
-            };
-
-            mediaRecorder.onstop = async () => {
-                if (audioChunks.length > 0) {
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                    await processAudio(audioBlob);
-                }
-                if (continuousRecognition) {
-                    startNewRecording();
+                if (event.data.size > 0) {
+                    currentAudioChunks.push(event.data);
                 }
             };
 
-            startNewRecording();
-            recognitionInterval = setInterval(() => {
-                if (!isRecording) {
-                    clearInterval(recognitionInterval);
+            // Parar a gravação periodicamente para evitar arquivos muito grandes
+            setInterval(() => {
+                if (isCollectingAudio) {
+                    mediaRecorder.stop();
+                    mediaRecorder.start();
                 }
-            }, 5000);
+            }, maxAudioLength);
 
+            return stream;
         } catch (err) {
             console.error("Erro ao acessar o microfone:", err);
             alert("Erro ao acessar o microfone. Por favor, verifique as permissões.");
+            return null;
         }
     }
 
-    function stopVoiceRecording() {
+    function stopVoiceRecognition() {
         if (mediaRecorder && isRecording) {
-            continuousRecognition = false;
             isRecording = false;
             mediaRecorder.stop();
             mediaRecorder.stream.getTracks().forEach(track => track.stop());
-            clearInterval(recognitionInterval);
             micButton.classList.remove('recording');
-            micButton.querySelector('.mic-text').textContent = 'Ativar Microfone';
+            micButton.querySelector('.mic-text').textContent = 'Falar em Tempo Real';
         }
     }
 
     async function processAudio(audioBlob) {
-        try {
-            showTypingIndicator();
+        if (processingAudio) return;
+        processingAudio = true;
 
+        try {
             const uploadResponse = await fetch('https://api.assemblyai.com/v2/upload', {
                 method: 'POST',
                 headers: {
@@ -312,18 +352,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
 
-            if (transcript.text && transcript.text.trim() !== '') {
+            if (transcript.text && transcript.text.trim() !== '' && transcript.text !== lastProcessedText) {
+                lastProcessedText = transcript.text;
                 addMessage(transcript.text, true);
                 await processUserInput(transcript.text);
             }
 
         } catch (error) {
             console.error("Erro ao processar áudio:", error);
-            if (!continuousRecognition) {
-                alert("Erro ao processar o áudio. Por favor, tente novamente.");
-            }
         } finally {
-            hideTypingIndicator();
+            processingAudio = false;
         }
     }
 
@@ -401,7 +439,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Inicialização
-    if (!isMobile) {
+    if (isMobile) {
+        startCamera();
+    } else {
         startScreenCapture();
     }
 
@@ -435,9 +475,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     micButton.addEventListener('click', () => {
         if (!isRecording) {
-            startContinuousRecording();
+            startVoiceRecognition();
         } else {
-            stopVoiceRecording();
+            stopVoiceRecognition();
         }
     });
 

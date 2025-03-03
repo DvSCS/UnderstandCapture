@@ -34,6 +34,7 @@ body {
     margin-bottom: 20px;
     flex-wrap: wrap;
     justify-content: center;
+    width: 100%;
 }
 
 #captureButton, .camera-button, .mic-button, .tts-button {
@@ -47,6 +48,8 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
+    min-width: 200px;
+    justify-content: center;
 }
 
 #captureButton {
@@ -169,6 +172,7 @@ body {
     padding: 10px 15px;
     border-radius: 15px;
     max-width: 80%;
+    word-wrap: break-word;
 }
 
 .user-message {
@@ -251,8 +255,20 @@ body {
     background-color: #1976D2;
 }
 
+.desktop-only {
+    display: flex;
+}
+
+.mobile-only {
+    display: none;
+}
+
 /* Responsividade para dispositivos móveis */
 @media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+
     .control-buttons {
         flex-direction: column;
         align-items: stretch;
@@ -261,9 +277,22 @@ body {
     #captureButton, .camera-button, .mic-button {
         width: 100%;
         justify-content: center;
+        min-width: unset;
     }
 
     #mediaContainer {
         aspect-ratio: 3/4;
+    }
+
+    .desktop-only {
+        display: none !important;
+    }
+
+    .mobile-only {
+        display: flex !important;
+    }
+
+    .message {
+        max-width: 90%;
     }
 } 

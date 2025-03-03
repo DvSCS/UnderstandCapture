@@ -10,18 +10,18 @@
     <div class="container">
         <div class="capture-section">
             <div class="control-buttons">
-                <button id="captureButton">Compartilhar Tela</button>
-                <button id="cameraButton" class="camera-button">
+                <button id="captureButton" class="desktop-only">Compartilhar Tela</button>
+                <button id="cameraButton" class="camera-button mobile-only">
                     <span class="camera-icon">📷</span>
-                    <span class="camera-text">Ativar Câmera</span>
+                    <span class="camera-text">Gravar Câmera</span>
                 </button>
                 <button id="micButton" class="mic-button">
                     <span class="mic-icon">🎤</span>
-                    <span class="mic-text">Ativar Microfone</span>
+                    <span class="mic-text">Falar em Tempo Real</span>
                 </button>
             </div>
             <div id="mediaContainer">
-                <video id="cameraPreview" autoplay playsinline style="display: none;"></video>
+                <video id="cameraPreview" autoplay playsinline muted style="display: none;"></video>
                 <img id="screenshot" alt="Screenshot" style="display: none;">
             </div>
         </div>
