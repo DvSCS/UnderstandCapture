@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Captura de Tela com IA</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="capture-section">
+            <div class="control-buttons">
+                <button id="captureButton">Trocar Tela</button>
+                <button id="micButton" class="mic-button">
+                    <span class="mic-icon">🎤</span>
+                    <span class="mic-text">Ativar Microfone</span>
+                </button>
+            </div>
+            <div id="result">
+                <img id="screenshot" alt="Screenshot" style="display: none;">
+            </div>
+        </div>
+        <div class="chat-section">
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="typing-indicator" id="typingIndicator">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <div class="voice-controls">
+                <button id="stopTTS" class="tts-button" style="display: none;">
+                    <span class="stop-icon">⏹️</span>
+                    Parar Voz
+                </button>
+            </div>
+            <div class="chat-input">
+                <input type="text" id="userInput" placeholder="Faça uma pergunta sobre a tela...">
+                <button id="sendButton">Enviar</button>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html> 
