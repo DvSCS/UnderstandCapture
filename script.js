@@ -366,26 +366,37 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function captureCurrentFrame() {
-        if (isCameraActive) {
+        try {
             const canvas = document.createElement('canvas');
-            canvas.width = cameraPreview.videoWidth;
-            canvas.height = cameraPreview.videoHeight;
+            if (isCameraActive && cameraPreview.videoWidth > 0) {
+                canvas.width = cameraPreview.videoWidth;
+                canvas.height = cameraPreview.videoHeight;
+                const context = canvas.getContext('2d');
+                context.drawImage(cameraPreview, 0, 0, canvas.width, canvas.height);
+            } else if (screenshot.src) {
+                const img = new Image();
+                img.src = screenshot.src;
+                await new Promise((resolve) => {
+                    img.onload = resolve;
+                });
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const context = canvas.getContext('2d');
+                context.drawImage(img, 0, 0, canvas.width, canvas.height);
+            } else {
+                throw new Error('Nenhuma imagem disponível para captura');
+            }
 
-            const context = canvas.getContext('2d');
-            context.drawImage(cameraPreview, 0, 0, canvas.width, canvas.height);
-
-            const dataUrl = canvas.toDataURL('image/png');
-            lastScreenshotData = dataUrl;
-            return dataUrl;
-        } else if (!currentStream || !isCapturing) {
-            await startScreenCapture();
-            return lastScreenshotData;
+            // Converter para base64 e remover o prefixo
+            const base64Data = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+            return base64Data;
+        } catch (error) {
+            console.error("Erro ao capturar frame:", error);
+            return null;
         }
-
-        return lastScreenshotData;
     }
 
-    async function analyzeImageWithAI(imageUrl, userQuestion) {
+    async function analyzeImageWithAI(imageBase64, userQuestion) {
         try {
             const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
                 method: "POST",
@@ -408,7 +419,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 {
                                     "type": "image_url",
                                     "image_url": {
-                                        "url": imageUrl
+                                        "url": `data:image/jpeg;base64,${imageBase64}`
                                     }
                                 }
                             ]
@@ -416,6 +427,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     ]
                 })
             });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
 
             const data = await response.json();
             return data.choices[0].message.content;
@@ -426,16 +441,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function processUserInput(text) {
-        const currentFrame = await captureCurrentFrame();
-        if (!currentFrame) {
-            alert("Erro ao capturar imagem. Por favor, tente novamente.");
-            return;
-        }
+        try {
+            const imageBase64 = await captureCurrentFrame();
+            if (!imageBase64) {
+                throw new Error("Não foi possível capturar a imagem");
+            }
 
-        showTypingIndicator();
-        const aiResponse = await analyzeImageWithAI(currentFrame, text);
-        hideTypingIndicator();
-        addMessage(aiResponse, false);
+            showTypingIndicator();
+            const aiResponse = await analyzeImageWithAI(imageBase64, text);
+            hideTypingIndicator();
+            addMessage(aiResponse, false);
+        } catch (error) {
+            console.error("Erro ao processar entrada:", error);
+            hideTypingIndicator();
+            addMessage("Desculpe, ocorreu um erro ao processar sua solicitação. Por favor, verifique se a câmera ou compartilhamento de tela está ativo e tente novamente.", false);
+        }
     }
 
     // Inicialização
