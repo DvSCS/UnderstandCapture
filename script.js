@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Configuração da API
     const OPENROUTER_API_KEY = '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';
     const ASSEMBLYAI_API_KEY = '458aa2eca05f431a95f72cbefd043a99';
-    const SITE_URL = 'https://understand-capture.vercel.app';  // URL fixa do site
+    const SITE_URL = 'https://dvscs.github.io/UnderstandCapture/';  // URL fixa do site
     const SITE_NAME = 'Screen Capture AI Chat';
 
     // Detectar se é dispositivo móvel
@@ -373,17 +373,20 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!imageBase64.startsWith('data:image/')) {
                 imageBase64 = `data:image/jpeg;base64,${imageBase64.split(',').pop()}`;
             }
+
+            console.log("Enviando requisição para API...");
             
             const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
                 method: "POST",
                 headers: {
                     "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
                     "Content-Type": "application/json",
-                    "HTTP-Referer": SITE_URL,
-                    "X-Title": SITE_NAME
+                    "HTTP-Referer": `${SITE_URL}`,
+                    "X-Title": SITE_NAME,
+                    "OR-Organization": "org-123"
                 },
                 body: JSON.stringify({
-                    "model": "gpt-4-vision-preview",
+                    "model": "openai/gpt-4-vision-preview",
                     "max_tokens": 1000,
                     "messages": [
                         {
@@ -399,7 +402,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                 },
                                 {
                                     "type": "image_url",
-                                    "image_url": imageBase64
+                                    "image_url": {
+                                        "url": imageBase64
+                                    }
                                 }
                             ]
                         }
@@ -410,6 +415,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error("Erro da API:", errorText);
+                console.error("Status:", response.status);
+                console.error("Headers:", Object.fromEntries(response.headers));
                 throw new Error(`Erro na API: ${response.status} - ${errorText}`);
             }
 
@@ -453,7 +460,7 @@ document.addEventListener('DOMContentLoaded', () => {
             context.drawImage(sourceElement, 0, 0, width, height);
 
             // Converter para JPEG com qualidade mais baixa para reduzir tamanho
-            const base64Data = canvas.toDataURL('image/jpeg', 0.6);
+            const base64Data = canvas.toDataURL('image/jpeg', 0.5);
             
             // Verificar o tamanho dos dados
             const estimatedSize = Math.round((base64Data.length * 3) / 4);
