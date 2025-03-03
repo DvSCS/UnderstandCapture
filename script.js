@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Configuração da API
     const OPENROUTER_API_KEY = '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';
     const ASSEMBLYAI_API_KEY = '458aa2eca05f431a95f72cbefd043a99';
-    const SITE_URL = window.location.origin;
+    const SITE_URL = 'https://understand-capture.vercel.app';  // URL fixa do site
     const SITE_NAME = 'Screen Capture AI Chat';
 
     // Detectar se é dispositivo móvel
@@ -417,12 +417,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 method: "POST",
                 headers: {
                     "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+                    "Content-Type": "application/json",
                     "HTTP-Referer": SITE_URL,
                     "X-Title": SITE_NAME,
-                    "Content-Type": "application/json"
+                    "OpenAI-Organization": "org-123",
+                    "X-Custom-Auth": "true"
                 },
                 body: JSON.stringify({
-                    "model": "qwen/qwen2.5-vl-72b-instruct:free",
+                    "model": "anthropic/claude-3-haiku",
                     "messages": [
                         {
                             "role": "user",
@@ -454,7 +456,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return data.choices[0].message.content;
         } catch (error) {
             console.error("Erro detalhado ao analisar imagem:", error);
-            return `Desculpe, ocorreu um erro ao analisar a imagem: ${error.message}. Por favor, tente novamente.`;
+            throw new Error(`Erro ao analisar imagem: ${error.message}`);
         }
     }
 
