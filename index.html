@@ -10,13 +10,18 @@
     <div class="container">
         <div class="capture-section">
             <div class="control-buttons">
-                <button id="captureButton">Trocar Tela</button>
+                <button id="captureButton">Compartilhar Tela</button>
+                <button id="cameraButton" class="camera-button">
+                    <span class="camera-icon">📷</span>
+                    <span class="camera-text">Ativar Câmera</span>
+                </button>
                 <button id="micButton" class="mic-button">
                     <span class="mic-icon">🎤</span>
                     <span class="mic-text">Ativar Microfone</span>
                 </button>
             </div>
-            <div id="result">
+            <div id="mediaContainer">
+                <video id="cameraPreview" autoplay playsinline style="display: none;"></video>
                 <img id="screenshot" alt="Screenshot" style="display: none;">
             </div>
         </div>

@@ -1,5 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const captureButton = document.getElementById('captureButton');
+    const cameraButton = document.getElementById('cameraButton');
+    const cameraPreview = document.getElementById('cameraPreview');
     const screenshot = document.getElementById('screenshot');
     const userInput = document.getElementById('userInput');
     const sendButton = document.getElementById('sendButton');
@@ -12,15 +14,29 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentStream = null;
     let isCapturing = false;
     let isRecording = false;
+    let isCameraActive = false;
     let mediaRecorder = null;
     let audioChunks = [];
     let currentSpeech = null;
+    let continuousRecognition = false;
+    let recognitionInterval = null;
 
     // Configuração da API
     const OPENROUTER_API_KEY = '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';
     const ASSEMBLYAI_API_KEY = '458aa2eca05f431a95f72cbefd043a99';
     const SITE_URL = window.location.origin;
     const SITE_NAME = 'Screen Capture AI Chat';
+
+    // Detectar se é dispositivo móvel
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+    // Ajustar interface baseado no dispositivo
+    if (isMobile) {
+        captureButton.style.display = 'none';
+        cameraButton.style.display = 'flex';
+    } else {
+        cameraButton.style.display = 'none';
+    }
 
     function showTypingIndicator() {
         typingIndicator.classList.add('visible');
@@ -52,7 +68,6 @@ document.addEventListener('DOMContentLoaded', () => {
         currentSpeech.rate = 1;
         currentSpeech.pitch = 1;
 
-        // Encontrar uma voz mais natural em português
         const voices = speechSynthesis.getVoices();
         const brVoice = voices.find(voice => voice.lang.includes('pt-BR'));
         if (brVoice) {
@@ -82,6 +97,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             currentStream = stream;
             isCapturing = true;
+            isCameraActive = false;
+            cameraPreview.style.display = 'none';
+            screenshot.style.display = 'block';
 
             const video = document.createElement('video');
             video.srcObject = stream;
@@ -100,7 +118,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const dataUrl = canvas.toDataURL('image/png');
                 lastScreenshotData = dataUrl;
                 screenshot.src = dataUrl;
-                screenshot.style.display = 'block';
             };
 
             const intervalId = setInterval(updateScreenshot, 1000);
@@ -119,25 +136,107 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function startVoiceRecording() {
+    async function startCamera() {
+        try {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: 'environment'
+                },
+                audio: false
+            });
+
+            currentStream = stream;
+            isCameraActive = true;
+            isCapturing = true;
+
+            cameraPreview.srcObject = stream;
+            cameraPreview.style.display = 'block';
+            screenshot.style.display = 'none';
+
+            cameraButton.classList.add('active');
+
+            // Capturar frames da câmera periodicamente
+            const intervalId = setInterval(() => {
+                if (!isCameraActive) {
+                    clearInterval(intervalId);
+                    return;
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = cameraPreview.videoWidth;
+                canvas.height = cameraPreview.videoHeight;
+
+                const context = canvas.getContext('2d');
+                context.drawImage(cameraPreview, 0, 0, canvas.width, canvas.height);
+
+                lastScreenshotData = canvas.toDataURL('image/png');
+            }, 1000);
+
+            return stream;
+        } catch (err) {
+            console.error("Erro ao acessar a câmera:", err);
+            alert("Erro ao acessar a câmera. Por favor, verifique as permissões.");
+            return null;
+        }
+    }
+
+    function stopCamera() {
+        if (currentStream && isCameraActive) {
+            currentStream.getTracks().forEach(track => track.stop());
+            currentStream = null;
+            isCameraActive = false;
+            isCapturing = false;
+            cameraPreview.style.display = 'none';
+            cameraButton.classList.remove('active');
+        }
+    }
+
+    async function startContinuousRecording() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream);
-            audioChunks = [];
+            isRecording = true;
+            continuousRecognition = true;
+            micButton.classList.add('recording');
+            micButton.querySelector('.mic-text').textContent = 'Gravando...';
+
+            // Configurar intervalo de gravação
+            const startNewRecording = () => {
+                audioChunks = [];
+                mediaRecorder.start();
+
+                setTimeout(() => {
+                    if (isRecording) {
+                        mediaRecorder.stop();
+                    }
+                }, 5000); // Gravar por 5 segundos
+            };
 
             mediaRecorder.ondataavailable = (event) => {
                 audioChunks.push(event.data);
             };
 
             mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                await processAudio(audioBlob);
+                if (audioChunks.length > 0) {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    await processAudio(audioBlob);
+                }
+                if (continuousRecognition) {
+                    startNewRecording();
+                }
             };
 
-            mediaRecorder.start();
-            isRecording = true;
-            micButton.classList.add('recording');
-            micButton.querySelector('.mic-text').textContent = 'Gravando...';
+            startNewRecording();
+            recognitionInterval = setInterval(() => {
+                if (!isRecording) {
+                    clearInterval(recognitionInterval);
+                }
+            }, 5000);
+
         } catch (err) {
             console.error("Erro ao acessar o microfone:", err);
             alert("Erro ao acessar o microfone. Por favor, verifique as permissões.");
@@ -146,9 +245,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function stopVoiceRecording() {
         if (mediaRecorder && isRecording) {
+            continuousRecognition = false;
+            isRecording = false;
             mediaRecorder.stop();
             mediaRecorder.stream.getTracks().forEach(track => track.stop());
-            isRecording = false;
+            clearInterval(recognitionInterval);
             micButton.classList.remove('recording');
             micButton.querySelector('.mic-text').textContent = 'Ativar Microfone';
         }
@@ -158,7 +259,6 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             showTypingIndicator();
 
-            // Primeiro, fazer upload do arquivo de áudio
             const uploadResponse = await fetch('https://api.assemblyai.com/v2/upload', {
                 method: 'POST',
                 headers: {
@@ -174,7 +274,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const uploadResult = await uploadResponse.json();
             const audioUrl = uploadResult.upload_url;
 
-            // Iniciar a transcrição
             const transcribeResponse = await fetch('https://api.assemblyai.com/v2/transcript', {
                 method: 'POST',
                 headers: {
@@ -194,7 +293,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const transcribeResult = await transcribeResponse.json();
             const transcriptId = transcribeResult.id;
 
-            // Polling para obter o resultado
             let transcript;
             while (true) {
                 const pollingResponse = await fetch(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, {
@@ -214,39 +312,39 @@ document.addEventListener('DOMContentLoaded', () => {
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
 
-            if (transcript.text) {
+            if (transcript.text && transcript.text.trim() !== '') {
                 addMessage(transcript.text, true);
                 await processUserInput(transcript.text);
             }
 
         } catch (error) {
             console.error("Erro ao processar áudio:", error);
-            alert("Erro ao processar o áudio. Por favor, tente novamente.");
+            if (!continuousRecognition) {
+                alert("Erro ao processar o áudio. Por favor, tente novamente.");
+            }
         } finally {
             hideTypingIndicator();
         }
     }
 
     async function captureCurrentFrame() {
-        if (!currentStream || !isCapturing) {
+        if (isCameraActive) {
+            const canvas = document.createElement('canvas');
+            canvas.width = cameraPreview.videoWidth;
+            canvas.height = cameraPreview.videoHeight;
+
+            const context = canvas.getContext('2d');
+            context.drawImage(cameraPreview, 0, 0, canvas.width, canvas.height);
+
+            const dataUrl = canvas.toDataURL('image/png');
+            lastScreenshotData = dataUrl;
+            return dataUrl;
+        } else if (!currentStream || !isCapturing) {
             await startScreenCapture();
             return lastScreenshotData;
         }
 
-        const video = document.createElement('video');
-        video.srcObject = currentStream;
-        await video.play();
-
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-
-        const context = canvas.getContext('2d');
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        const dataUrl = canvas.toDataURL('image/png');
-        lastScreenshotData = dataUrl;
-        return dataUrl;
+        return lastScreenshotData;
     }
 
     async function analyzeImageWithAI(imageUrl, userQuestion) {
@@ -292,7 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function processUserInput(text) {
         const currentFrame = await captureCurrentFrame();
         if (!currentFrame) {
-            alert("Erro ao capturar a tela. Por favor, tente novamente.");
+            alert("Erro ao capturar imagem. Por favor, tente novamente.");
             return;
         }
 
@@ -302,12 +400,22 @@ document.addEventListener('DOMContentLoaded', () => {
         addMessage(aiResponse, false);
     }
 
-    // Iniciar captura automática ao carregar a página
-    startScreenCapture();
+    // Inicialização
+    if (!isMobile) {
+        startScreenCapture();
+    }
 
     // Event Listeners
     captureButton.addEventListener('click', async () => {
         await startScreenCapture();
+    });
+
+    cameraButton.addEventListener('click', async () => {
+        if (!isCameraActive) {
+            await startCamera();
+        } else {
+            stopCamera();
+        }
     });
 
     sendButton.addEventListener('click', async () => {
@@ -327,7 +435,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     micButton.addEventListener('click', () => {
         if (!isRecording) {
-            startVoiceRecording();
+            startContinuousRecording();
         } else {
             stopVoiceRecording();
         }
