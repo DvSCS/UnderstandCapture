@@ -368,27 +368,40 @@ document.addEventListener('DOMContentLoaded', () => {
     async function captureCurrentFrame() {
         try {
             const canvas = document.createElement('canvas');
+            let width = 800; // Tamanho máximo para reduzir o tamanho do arquivo
+            let height = 600;
+            let sourceElement;
+
             if (isCameraActive && cameraPreview.videoWidth > 0) {
-                canvas.width = cameraPreview.videoWidth;
-                canvas.height = cameraPreview.videoHeight;
-                const context = canvas.getContext('2d');
-                context.drawImage(cameraPreview, 0, 0, canvas.width, canvas.height);
-            } else if (screenshot.src) {
-                const img = new Image();
-                img.src = screenshot.src;
-                await new Promise((resolve) => {
-                    img.onload = resolve;
-                });
-                canvas.width = img.width;
-                canvas.height = img.height;
-                const context = canvas.getContext('2d');
-                context.drawImage(img, 0, 0, canvas.width, canvas.height);
+                sourceElement = cameraPreview;
+                const aspectRatio = sourceElement.videoWidth / sourceElement.videoHeight;
+                height = width / aspectRatio;
+            } else if (screenshot.src && screenshot.src !== '') {
+                sourceElement = screenshot;
+                const aspectRatio = sourceElement.width / sourceElement.height;
+                height = width / aspectRatio;
             } else {
                 throw new Error('Nenhuma imagem disponível para captura');
             }
 
-            // Converter para base64 e remover o prefixo
-            const base64Data = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+            canvas.width = width;
+            canvas.height = height;
+            const context = canvas.getContext('2d');
+            
+            // Aplicar suavização
+            context.imageSmoothingEnabled = true;
+            context.imageSmoothingQuality = 'high';
+            
+            // Desenhar a imagem redimensionada
+            context.drawImage(sourceElement, 0, 0, width, height);
+
+            // Converter para JPEG com qualidade reduzida
+            const base64Data = canvas.toDataURL('image/jpeg', 0.7);
+            
+            // Verificar o tamanho dos dados
+            const estimatedSize = Math.round((base64Data.length * 3) / 4);
+            console.log(`Tamanho estimado da imagem: ${Math.round(estimatedSize / 1024)}KB`);
+
             return base64Data;
         } catch (error) {
             console.error("Erro ao capturar frame:", error);
@@ -398,6 +411,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function analyzeImageWithAI(imageBase64, userQuestion) {
         try {
+            console.log("Iniciando análise da imagem...");
+            
             const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
                 method: "POST",
                 headers: {
@@ -419,7 +434,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 {
                                     "type": "image_url",
                                     "image_url": {
-                                        "url": `data:image/jpeg;base64,${imageBase64}`
+                                        "url": imageBase64
                                     }
                                 }
                             ]
@@ -429,32 +444,36 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorText = await response.text();
+                console.error("Erro da API:", errorText);
+                throw new Error(`Erro na API: ${response.status} - ${errorText}`);
             }
 
             const data = await response.json();
+            console.log("Resposta da API recebida com sucesso");
             return data.choices[0].message.content;
         } catch (error) {
-            console.error("Erro ao analisar imagem com IA:", error);
-            return "Desculpe, ocorreu um erro ao analisar a imagem. Por favor, tente novamente.";
+            console.error("Erro detalhado ao analisar imagem:", error);
+            return `Desculpe, ocorreu um erro ao analisar a imagem: ${error.message}. Por favor, tente novamente.`;
         }
     }
 
     async function processUserInput(text) {
         try {
-            const imageBase64 = await captureCurrentFrame();
-            if (!imageBase64) {
+            const imageData = await captureCurrentFrame();
+            if (!imageData) {
                 throw new Error("Não foi possível capturar a imagem");
             }
 
             showTypingIndicator();
-            const aiResponse = await analyzeImageWithAI(imageBase64, text);
+            console.log("Processando imagem...");
+            const aiResponse = await analyzeImageWithAI(imageData, text);
             hideTypingIndicator();
             addMessage(aiResponse, false);
         } catch (error) {
-            console.error("Erro ao processar entrada:", error);
+            console.error("Erro detalhado ao processar entrada:", error);
             hideTypingIndicator();
-            addMessage("Desculpe, ocorreu um erro ao processar sua solicitação. Por favor, verifique se a câmera ou compartilhamento de tela está ativo e tente novamente.", false);
+            addMessage(`Erro ao processar sua solicitação: ${error.message}. Por favor, verifique se a câmera ou compartilhamento de tela está ativo e tente novamente.`, false);
         }
     }
 
